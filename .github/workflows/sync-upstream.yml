@@ -43,19 +43,23 @@ jobs:
           git merge --no-edit -X ours upstream/main
           git push origin main
 
-      - name: Resolve version
+      - name: Resolve upstream release
         id: version
         run: |
           set -euo pipefail
-          version="$(sed -n 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*["'"'"']\([^"'"'"']*\)["'"'"'][[:space:]]*$/\1/p' project.yml | head -1)"
-          [ -n "$version" ] || { echo '::error::MARKETING_VERSION not found'; exit 1; }
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          python3 - <<'PY'
+          import json, os
+          data = json.load(open("App/Resources/ReleaseNotes.json"))
+          r = data["releases"][0]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"release_version={r['version']}\n")
+              f.write(f"marketing_version={r.get('marketingVersion', r['version'])}\n")
+              f.write(f"build={r['build']}\n")
+          print(f"Upstream release: {r['version']} / Apple {r.get('marketingVersion', r['version'])} / build {r['build']}")
 
       - name: Build release if missing
         env:
-          VERSION: ${{ steps.version.outputs.version }}
-          TAG: ${{ steps.version.outputs.tag }}
+          TAG: v${{ steps.version.outputs.release_version }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
