@@ -1,0 +1,82 @@
+name: iOS IPA Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: plozz-ios-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: |
+          set -euo pipefail
+          export PLOZZ_ID_SUFFIX=''
+          export PLOZZ_NAME_SUFFIX=''
+          export PLOZZ_PAIRING_SERVICE_TYPE='_plozz-pair._tcp'
+          export PLOZZ_URL_SCHEME='plozz'
+          export PLOZZ_IOS_APP_ENTITLEMENTS='App/PlozziOS/PlozziOS.entitlements'
+          export PLOZZ_TV_APP_ENTITLEMENTS='App/Resources/Plozz.entitlements'
+          export PLOZZ_TV_TOPSHELF_ENTITLEMENTS='TopShelf/TopShelf.entitlements'
+          xcodegen generate
+
+      - name: Resolve Swift packages
+        run: xcodebuild -resolvePackageDependencies -project Plozz.xcodeproj
+
+      - name: Build unsigned iOS archive
+        run: |
+          set -euo pipefail
+          rm -rf build
+          xcodebuild archive             -project Plozz.xcodeproj             -scheme PlozziOS             -configuration Release             -sdk iphoneos             -archivePath build/PlozziOS.xcarchive             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             DEVELOPMENT_TEAM=
+
+      - name: Package IPA
+        id: package
+        run: |
+          set -euo pipefail
+          APP='build/PlozziOS.xcarchive/Products/Applications/PlozziOS.app'
+          [ -d "$APP" ] || { echo "::error::PlozziOS.app not found"; exit 1; }
+          mkdir -p build/Payload
+          cp -R "$APP" build/Payload/PlozziOS.app
+          VERSION="${GITHUB_REF_NAME#v}"
+          IPA="Plozz-${VERSION}.ipa"
+          (cd build && zip -qry "../$IPA" Payload)
+          echo "ipa=$IPA" >> "$GITHUB_OUTPUT"
+          ls -lh "$IPA"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Plozz ${{ github.ref_name }}
+          body: |
+            Unsigned iOS IPA built automatically from the upstream Plozz source.
+            
+            - iOS/iPadOS build only
+            - No Apple signing credentials are included
+            - Install with AltStore/SideStore or sign with your own certificate
+          files: ${{ steps.package.outputs.ipa }}
