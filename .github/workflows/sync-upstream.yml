@@ -63,10 +63,26 @@ jobs:
           if git log -1 --pretty=%B | grep -q '\[force-rebuild\]'; then
             FORCE_REBUILD=true
           fi
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && [ "$FORCE_REBUILD" != true ]; then
-            echo "Release $TAG already exists."
+          RELEASE_EXISTS=false
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            RELEASE_EXISTS=true
+          fi
+
+          IPA_NAME="Plozz-${TAG#v}.ipa"
+          HAS_IPA=false
+          if [ "$RELEASE_EXISTS" = true ] && gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$IPA_NAME"; then
+            HAS_IPA=true
+          fi
+
+          if [ "$HAS_IPA" = true ] && [ "$FORCE_REBUILD" != true ]; then
+            echo "Release $TAG already has $IPA_NAME."
             exit 0
           fi
+
+          if [ "$RELEASE_EXISTS" = true ]; then
+            gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+
           REMOTE_TAG_SHA="$(git ls-remote origin "refs/tags/$TAG" | awk '{print $1}')"
           HEAD_SHA="$(git rev-parse HEAD)"
           if [ "$REMOTE_TAG_SHA" != "$HEAD_SHA" ]; then
@@ -75,4 +91,5 @@ jobs:
             git tag "$TAG" HEAD
             git push origin "$TAG"
           fi
-          gh workflow run ios-release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG"
+
+          gh workflow run ios-release.yml --repo "$GITHUB_REPOSITORY" --ref "$TAG" || true
