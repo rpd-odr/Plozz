@@ -33,6 +33,11 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Configure standalone iOS entitlements
+        run: |
+          set -euo pipefail
+          test -f App/PlozziOS/PlozziOS.branded.entitlements
+
       - name: Resolve release identity
         id: version
         run: |
@@ -59,6 +64,7 @@ jobs:
           PLOZZ_MARKETING_VERSION: ${{ steps.version.outputs.marketing_version }}
           PLOZZ_RELEASE_CHANNEL: production
           PLOZZ_BUILD_NUMBER: ${{ steps.version.outputs.build }}
+          PLOZZ_IOS_APP_ENTITLEMENTS: App/PlozziOS/PlozziOS.branded.entitlements
         run: ./tools/generate-project.sh
 
       - name: Resolve Swift packages
@@ -76,7 +82,8 @@ jobs:
             -archivePath build/PlozziOS.xcarchive \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            DEVELOPMENT_TEAM=
+            DEVELOPMENT_TEAM= \
+            CODE_SIGN_ENTITLEMENTS=App/PlozziOS/PlozziOS.branded.entitlements
 
       - name: Package IPA
         id: package
