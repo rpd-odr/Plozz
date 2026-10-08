@@ -1,4 +1,5 @@
 name: Sync upstream and build iOS IPA
+# Force rebuild against current upstream HEAD
 
 on:
   schedule:
