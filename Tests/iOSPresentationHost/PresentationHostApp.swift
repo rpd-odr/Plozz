@@ -22,6 +22,7 @@ struct PresentationHostApp: App {
         let model = PlozziOSAppModel()
         model.settings.density.density = .standard
         model.settings.cardStyle.captions = .default
+        model.settings.cardStyle.artwork = .default
         model.settings.cardStyle.style = .borderless
         model.settings.theme.theme = .dark
         model.settings.theme.gradientEnabled = true
@@ -63,7 +64,11 @@ struct PresentationHostApp: App {
 
     var body: some Scene {
         WindowGroup {
-            if ProcessInfo.processInfo.arguments.contains("--iptv-removal-fixture") {
+            if ProcessInfo.processInfo.arguments.contains("--profile-picker-fixture") {
+                ProfilePickerInteractionFixture()
+            } else if ProcessInfo.processInfo.arguments.contains("--downloads-interaction-fixture") {
+                DownloadsInteractionFixture()
+            } else if ProcessInfo.processInfo.arguments.contains("--iptv-removal-fixture") {
                 IPTVRemovalFixture()
             } else if ProcessInfo.processInfo.arguments.contains("--iptv-setup-fixture") {
                 IPTVSetupFixture()

@@ -912,6 +912,17 @@ public final class HomeViewModel {
         // Apply the same Home-visibility filter so a hidden library's items don't
         // leak into Top Shelf. `content.latest` is the global Recently Added feed
         // in both merged and unmerged mode, so Top Shelf is identical either way.
+        publishCurrentContent()
+    }
+
+    public func publishCurrentContent() {
+        let content: Content
+        switch state {
+        case .loaded(let loaded): content = loaded
+        case .empty: content = Content()
+        default: return
+        }
+        let visibility = currentVisibility()
         let isLibraryVisible: (String) -> Bool = { visibility.isVisible($0) }
         let continueWatching = content.continueWatching.filter { $0.isVisibleOnHome(isLibraryVisible: isLibraryVisible) }
         let latest = content.latest.filter { $0.isVisibleOnHome(isLibraryVisible: isLibraryVisible) }
@@ -950,7 +961,6 @@ public final class HomeViewModel {
         guard !Task.isCancelled, generation == loadGeneration, currentVisibility() == visibility else { return }
         loadFailures = progress.failures
         guard publishesProgress else { return }
-        rowFailures = progress.failures
         let ready = Set(HomeRowKind.allCases).subtracting(progress.loadingRows)
         let newlyReady = ready.subtracting(publishedLoadRows)
         var resume: [MediaItem]?
@@ -1010,6 +1020,9 @@ public final class HomeViewModel {
         }
         content = applyingLoadMutations(to: content)
         publishedLoadRows.formUnion(ready)
+        // Publish failures with reconciled content, never across an await that
+        // could replace a focused loading row before its usable cards arrive.
+        rowFailures = progress.failures
         loadingRows = progress.loadingRows
         if state.value != content { state = .loaded(content) }
         let libraryRowCount = content.librarySections.reduce(0) { $0 + $1.sections.count }
