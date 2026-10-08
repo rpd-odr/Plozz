@@ -33,6 +33,8 @@ jobs:
 
           git remote remove upstream 2>/dev/null || true
           git remote add upstream https://github.com/brandomoore/Plozz.git
+          git fetch origin main --no-tags
+          git reset --hard origin/main
           git fetch upstream main --no-tags
 
           if git diff --quiet HEAD upstream/main; then
