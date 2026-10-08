@@ -109,6 +109,8 @@ targets:
         PlozzReleaseChannel: "$(PLOZZ_RELEASE_CHANNEL)"
         PlozzReleaseID: "$(PLOZZ_RELEASE_ID)"
         PlozzReleaseVersion: "$(PLOZZ_RELEASE_VERSION)"
+        # Standalone/LiveContainer builds can explicitly disable CloudKit before any CKContainer is touched.
+        PlozzCloudSyncDisabled: "$(PLOZZ_CLOUD_SYNC_DISABLED)"
         # Background audio keeps music playing while the user browses other
         # screens or the tvOS screensaver starts. Required for the music MVP's
         # background/Now-Playing behaviour (AVAudioSession .playback).
