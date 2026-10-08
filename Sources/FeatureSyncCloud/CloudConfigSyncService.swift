@@ -225,6 +225,17 @@ public actor CloudConfigSyncService {
             && CloudTraktRefreshTransport.manages(recordName: name)
     }
 
+    /// Standalone/LiveContainer builds can disable CloudKit explicitly. This is stronger
+    /// than relying on the embedded provisioning profile, because the host may re-sign
+    /// the guest app during installation and make profile-based capability detection
+    /// unreliable.
+    private var cloudSyncDisabledByBuild: Bool {
+        guard let value = Bundle.main.object(forInfoDictionaryKey: "PlozzCloudSyncDisabled") as? String else {
+            return false
+        }
+        return ["1", "YES", "true", "TRUE"].contains(value.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// Built lazily so merely CONSTRUCTING the service can't touch CloudKit.
     /// `CKContainer(identifier:)` traps (SIGTRAP) in any process whose entitlements
     /// don't carry that container — which is every unit-test host. It used to be
@@ -420,6 +431,11 @@ public actor CloudConfigSyncService {
     /// repeatedly. Re-arms the service if a prior `deactivate()` had fenced it.
     public func activate() async {
         isActive = true
+        guard !cloudSyncDisabledByBuild else {
+            PlozzLog.sync.info("CloudSync: disabled by build configuration")
+            setStatus(.disabled)
+            return
+        }
         guard config.isEnabled() else {
             deactivate()
             return
@@ -536,6 +552,7 @@ public actor CloudConfigSyncService {
     /// publish genuine local diffs (for every channel) and send — the anti-clobber
     /// ordering.
     public func fetchNow() async {
+        guard !cloudSyncDisabledByBuild else { return }
         guard config.isEnabled() else {
             deactivate()
             return
