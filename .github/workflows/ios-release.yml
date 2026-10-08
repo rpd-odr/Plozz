@@ -2,8 +2,7 @@ name: iOS IPA Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -17,27 +16,17 @@ jobs:
   build:
     runs-on: macos-latest
     timeout-minutes: 90
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
+        with: {fetch-depth: 0}
       - name: Select Xcode
         run: |
           set -euo pipefail
           xcodebuild -version
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
       - name: Install XcodeGen
         run: brew install xcodegen
-
-      - name: Configure standalone iOS entitlements
-        run: |
-          set -euo pipefail
-          test -f App/PlozziOS/PlozziOS.branded.entitlements
-
       - name: Resolve release identity
         id: version
         run: |
@@ -45,52 +34,56 @@ jobs:
           release_version="${GITHUB_REF_NAME#v}"
           python3 - "$release_version" <<'PY'
           import json, os, sys
-          wanted = sys.argv[1]
-          data = json.load(open("App/Resources/ReleaseNotes.json"))
-          matches = [r for r in data["releases"] if r.get("version") == wanted]
-          if not matches:
-              raise SystemExit(f"release {wanted} not found in ReleaseNotes.json")
-          r = matches[0]
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+          wanted=sys.argv[1]
+          data=json.load(open("App/Resources/ReleaseNotes.json"))
+          matches=[r for r in data["releases"] if r.get("version")==wanted]
+          if not matches: raise SystemExit(f"release {wanted} not found")
+          r=matches[0]
+          with open(os.environ["GITHUB_OUTPUT"],"a") as f:
               f.write(f"id={r['id']}\n")
               f.write(f"release_version={r['version']}\n")
-              f.write(f"marketing_version={r.get('marketingVersion', r['version'])}\n")
+              f.write(f"marketing_version={r.get('marketingVersion',r['version'])}\n")
               f.write(f"build={r['build']}\n")
-          print(f"Release: {r['id']} / {r['version']} / Apple {r.get('marketingVersion', r['version'])} / build {r['build']}")
-
-      - name: Generate Xcode project
+      - name: Generate standalone Xcode project
         env:
           PLOZZ_RELEASE_ID: ${{ steps.version.outputs.id }}
           PLOZZ_MARKETING_VERSION: ${{ steps.version.outputs.marketing_version }}
           PLOZZ_RELEASE_CHANNEL: production
           PLOZZ_BUILD_NUMBER: ${{ steps.version.outputs.build }}
           PLOZZ_IOS_APP_ENTITLEMENTS: App/PlozziOS/PlozziOS.branded.entitlements
-        run: ./tools/generate-project.sh
-
+        run: |
+          set -euo pipefail
+          test -f "$PLOZZ_IOS_APP_ENTITLEMENTS"
+          export GIT_CONFIG_PARAMETERS="'safe.bareRepository=all'"
+          ./tools/generate-project.sh
       - name: Resolve Swift packages
-        run: xcodebuild -resolvePackageDependencies -project Plozz.xcodeproj
-
+        run: |
+          set -euo pipefail
+          export GIT_CONFIG_PARAMETERS="'safe.bareRepository=all'"
+          xcodebuild -resolvePackageDependencies -project Plozz.xcodeproj
       - name: Build unsigned iOS archive
         run: |
           set -euo pipefail
           rm -rf build
           xcodebuild archive \
-            -project Plozz.xcodeproj \
-            -scheme PlozziOS \
-            -configuration Release \
-            -sdk iphoneos \
-            -archivePath build/PlozziOS.xcarchive \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            DEVELOPMENT_TEAM= \
-            CODE_SIGN_ENTITLEMENTS=App/PlozziOS/PlozziOS.branded.entitlements
-
+            -project Plozz.xcodeproj -scheme PlozziOS -configuration Release \
+            -sdk iphoneos -archivePath build/PlozziOS.xcarchive \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=
+      - name: Verify standalone entitlements
+        run: |
+          set -euo pipefail
+          APP='build/PlozziOS.xcarchive/Products/Applications/Plozz.app'
+          test -d "$APP"
+          if codesign -d --entitlements :- "$APP" 2>/dev/null | grep -Eq 'com\.apple\.developer\.(icloud|associated-domains|aps-environment)'; then
+            echo '::error::Production capability leaked into standalone Plozz IPA'
+            exit 1
+          fi
       - name: Package IPA
         id: package
         run: |
           set -euo pipefail
           APP='build/PlozziOS.xcarchive/Products/Applications/Plozz.app'
-          [ -d "$APP" ] || { echo "::error::PlozziOS.app not found"; exit 1; }
+          test -d "$APP"
           mkdir -p build/Payload
           cp -R "$APP" build/Payload/Plozz.app
           VERSION="${GITHUB_REF_NAME#v}"
@@ -98,20 +91,18 @@ jobs:
           (cd build && zip -qry "../$IPA" Payload)
           echo "ipa=$IPA" >> "$GITHUB_OUTPUT"
           ls -lh "$IPA"
-
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: Plozz ${{ github.ref_name }}
           body: |
-            Unsigned iOS IPA built automatically from the upstream Plozz source.
-
+            Unsigned standalone iOS IPA built automatically from upstream Plozz.
             Upstream release: ${{ steps.version.outputs.release_version }}
             Apple marketing version: ${{ steps.version.outputs.marketing_version }}
             Build: ${{ steps.version.outputs.build }}
-
             - iOS/iPadOS build only
+            - Production iCloud / Push / Associated Domains capabilities are stripped
             - No Apple signing credentials are included
             - Install with AltStore/SideStore or sign with your own certificate
           files: ${{ steps.package.outputs.ipa }}
