@@ -68,7 +68,8 @@ jobs:
           xcodebuild archive \
             -project Plozz.xcodeproj -scheme PlozziOS -configuration Release \
             -sdk iphoneos -archivePath build/PlozziOS.xcarchive \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM=
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO DEVELOPMENT_TEAM= \
+            PLOZZ_CLOUD_SYNC_DISABLED=YES
       - name: Verify standalone entitlements
         run: |
           set -euo pipefail
@@ -98,6 +99,7 @@ jobs:
           name: Plozz ${{ github.ref_name }}
           body: |
             Unsigned standalone iOS IPA built automatically from upstream Plozz.
+            CloudKit/iCloud sync is disabled in this standalone LiveContainer-compatible build.
             Upstream release: ${{ steps.version.outputs.release_version }}
             Apple marketing version: ${{ steps.version.outputs.marketing_version }}
             Build: ${{ steps.version.outputs.build }}
