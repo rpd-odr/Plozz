@@ -58,10 +58,10 @@ jobs:
         id: package
         run: |
           set -euo pipefail
-          APP='build/PlozziOS.xcarchive/Products/Applications/PlozziOS.app'
+          APP='build/PlozziOS.xcarchive/Products/Applications/Plozz.app'
           [ -d "$APP" ] || { echo "::error::PlozziOS.app not found"; exit 1; }
           mkdir -p build/Payload
-          cp -R "$APP" build/Payload/PlozziOS.app
+          cp -R "$APP" build/Payload/Plozz.app
           VERSION="${GITHUB_REF_NAME#v}"
           IPA="Plozz-${VERSION}.ipa"
           (cd build && zip -qry "../$IPA" Payload)
