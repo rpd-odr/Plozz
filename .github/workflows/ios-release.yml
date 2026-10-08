@@ -33,17 +33,33 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
-      - name: Generate Xcode project
+      - name: Resolve release identity
+        id: version
         run: |
           set -euo pipefail
-          export PLOZZ_ID_SUFFIX=''
-          export PLOZZ_NAME_SUFFIX=''
-          export PLOZZ_PAIRING_SERVICE_TYPE='_plozz-pair._tcp'
-          export PLOZZ_URL_SCHEME='plozz'
-          export PLOZZ_IOS_APP_ENTITLEMENTS='App/PlozziOS/PlozziOS.entitlements'
-          export PLOZZ_TV_APP_ENTITLEMENTS='App/Resources/Plozz.entitlements'
-          export PLOZZ_TV_TOPSHELF_ENTITLEMENTS='TopShelf/TopShelf.entitlements'
-          xcodegen generate
+          release_version="${GITHUB_REF_NAME#v}"
+          python3 - "$release_version" <<'PY'
+          import json, os, sys
+          wanted = sys.argv[1]
+          data = json.load(open("App/Resources/ReleaseNotes.json"))
+          matches = [r for r in data["releases"] if r.get("version") == wanted]
+          if not matches:
+              raise SystemExit(f"release {wanted} not found in ReleaseNotes.json")
+          r = matches[0]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"id={r['id']}\n")
+              f.write(f"release_version={r['version']}\n")
+              f.write(f"marketing_version={r.get('marketingVersion', r['version'])}\n")
+              f.write(f"build={r['build']}\n")
+          print(f"Release: {r['id']} / {r['version']} / Apple {r.get('marketingVersion', r['version'])} / build {r['build']}")
+
+      - name: Generate Xcode project
+        env:
+          PLOZZ_RELEASE_ID: ${{ steps.version.outputs.id }}
+          PLOZZ_MARKETING_VERSION: ${{ steps.version.outputs.marketing_version }}
+          PLOZZ_RELEASE_CHANNEL: production
+          PLOZZ_BUILD_NUMBER: ${{ steps.version.outputs.build }}
+        run: ./tools/generate-project.sh
 
       - name: Resolve Swift packages
         run: xcodebuild -resolvePackageDependencies -project Plozz.xcodeproj
@@ -52,7 +68,15 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf build
-          xcodebuild archive             -project Plozz.xcodeproj             -scheme PlozziOS             -configuration Release             -sdk iphoneos             -archivePath build/PlozziOS.xcarchive             CODE_SIGNING_ALLOWED=NO             CODE_SIGNING_REQUIRED=NO             DEVELOPMENT_TEAM=
+          xcodebuild archive \
+            -project Plozz.xcodeproj \
+            -scheme PlozziOS \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath build/PlozziOS.xcarchive \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM=
 
       - name: Package IPA
         id: package
@@ -75,7 +99,11 @@ jobs:
           name: Plozz ${{ github.ref_name }}
           body: |
             Unsigned iOS IPA built automatically from the upstream Plozz source.
-            
+
+            Upstream release: ${{ steps.version.outputs.release_version }}
+            Apple marketing version: ${{ steps.version.outputs.marketing_version }}
+            Build: ${{ steps.version.outputs.build }}
+
             - iOS/iPadOS build only
             - No Apple signing credentials are included
             - Install with AltStore/SideStore or sign with your own certificate
